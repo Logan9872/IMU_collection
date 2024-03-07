@@ -5,11 +5,13 @@ from PyQt6.QtCharts import QChartView, QChart, QLineSeries, QValueAxis, QScatter
 from PyQt6 import QtCore, QtGui, QtWidgets,Qt6
 from PyQt6.QtCore import QPointF, QTimer, Qt, QDateTime, QMargins
 from PyQt6.QtGui import QFont, QColor, QPen
-from PyQt6.QtWidgets import QVBoxLayout
+from PyQt6.QtWidgets import QVBoxLayout, QGraphicsTextItem
 from multiprocessing import Process
 
 import read_imu2
 import read_imu3
+import ECG_Model
+
 
 # Windows线程优先级常量
 THREAD_PRIORITY_LOWEST = -2
@@ -24,6 +26,7 @@ class Ui_Form(object):
         self.connected1 = False
         self.connected2 = False
         self.connected3 = False
+        self.current_hr_data = 60
 
         # self.current_imu_data1 = None
         # self.current_imu_data2 = None
@@ -51,6 +54,22 @@ class Ui_Form(object):
         self.verticalLayout_2.setSpacing(0)
         self.verticalLayout_2.setObjectName("verticalLayout_2")
         self.function_widget_1 = QtWidgets.QWidget(parent=self.widget_4)
+        # -----
+        self.hrLabel = QtWidgets.QLabel(Form)
+        self.hrLabel.setObjectName("hrLabel")
+        self.hrLabel.setText("心率: 0 bpm")
+        self.hrLabel.setFont(QtGui.QFont('Arial', 15))
+        self.hrLabel.setStyleSheet("color:#FF4136")  # 将文本颜色设置为红色
+        self.hrLabel.setFixedSize(150, 40)  # 调整大小以适应文本
+        # 假设已知窗体的宽度，这里以1200为例
+        form_width = 1200  # 假设或从Form.width()获取
+        # 标签的x位置是窗体宽度减去标签宽度和一些边距
+        label_x = form_width - self.hrLabel.width() - 0  # 右边留出10px边距
+        # 设置标签的y位置为窗体顶部边缘
+        label_y = 0  # 顶部留出10px边距，可根据需要调整
+        self.hrLabel.move(label_x, label_y)
+        self.hrLabel.raise_()  # 确保标签显示在其他组件之上
+        # _____
         self.function_widget_1.setObjectName("function_widget_1")
         self.verticalLayout_2.addWidget(self.function_widget_1)
         self.function_widget_2 = QtWidgets.QWidget(parent=self.widget_4)
@@ -127,10 +146,16 @@ class Ui_Form(object):
         self.init_charts()
         # 读取数据
         # 尝试连接第二个IMU
+
         self.thread2 = read_imu2.IMUThread(priority=THREAD_PRIORITY_HIGHEST)
         # 尝试连接第二个IMU
         self.thread3 = read_imu3.IMUThread(priority=THREAD_PRIORITY_HIGHEST)
 
+        # ----ecg process-------
+        self.ECGthread = ECG_Model.ECGThread("Polar H10 B606F424")
+        self.ECGthread.ECGSignals.connect(self.get_data4)
+        self.ECGthread.HRSignals.connect(self.get_data1)
+        # ----ecg process-------
 
         self.thread2.data_signal2.connect(self.get_data2)
         self.thread3.data_signal3.connect(self.get_data3)
@@ -143,8 +168,12 @@ class Ui_Form(object):
         self.timer3 = QTimer()
         self.timer3.setInterval(100)  # 定时器间隔为1000毫秒
 
+        # self.timer4 = QTimer()
+        # self.timer4.setInterval(1000)  # 定时器间隔为1000毫秒
+
         self.timer2.timeout.connect(self.update_data2)  #
         self.timer3.timeout.connect(self.update_data3)  #
+        # self.timer4.timeout.connect(self.update_data4)  #
 
 
     def get_data2(self, imu_dat):
@@ -157,6 +186,17 @@ class Ui_Form(object):
         self.current_imu_data3 = imu_dat
         # print("data3", self.current_imu_data3)
 
+    def get_data4(self, ecg_data):
+        # 保存数据以供定时器使用
+        self.current_ecg_data = ecg_data
+        self.update_chart1(ecg_data)
+        # print("get",self.current_ecg_data)
+
+    def get_data1(self, hr_data):
+        # 保存数据以供定时器使用
+        self.current_hr_data = hr_data
+        self.hrLabel.setText(f"心率: {self.current_hr_data} bpm")
+        # print("get", self.current_hr_data)
 
 
     def update_data2(self):
@@ -164,10 +204,8 @@ class Ui_Form(object):
             aX2 = self.current_imu_data2[3]
             aY2 = self.current_imu_data2[4]
             aZ2 = self.current_imu_data2[5]
-            GX2 = self.current_imu_data2[6]
-            GY2 = self.current_imu_data2[7]
-            GZ2 = self.current_imu_data2[8]
-            self.update_chart2(GX2, GY2, GZ2, aX2, aY2, aZ2 )
+
+            self.update_chart2(aX2, aY2, aZ2 )
         else:
             pass
 
@@ -179,9 +217,20 @@ class Ui_Form(object):
             self.update_chart3( aX3, aY3, aZ3)
         else:
             pass
+
+    # -----
+    def update_data4(self):
+        if hasattr(self, 'current_ecg_data'):
+            ecg = self.current_ecg_data
+            self.update_chart1(ecg)
+            # print("up",ecg)
+        else:
+            pass
+    # -----
+
     def init_charts(self):
-        self.chart, self.x_axis1,self.y_axis1, self.series_ax, self.series_ay, self.series_az = (
-            self.create_chart("IMU_1_角速度",-1000,1000,True))
+        self.chart, self.x_axis1,self.y_axis1, self.series_ax = (
+            self.create_chart_ecg("ECG心电信号",-800,800,True))
         self.chart2,self.x_axis2,self.y_axis2, self.series_gx, self.series_gy, self.series_gz = (
             self.create_chart("IMU_1_加速度",-100,100,True))
         self.chart3,self.x_axis3,self.y_axis3, self.series_cx, self.series_cy, self.series_cz = (
@@ -230,8 +279,6 @@ class Ui_Form(object):
         chart.addAxis(y_axis, Qt.AlignmentFlag.AlignLeft)
         chart.setMargins(QMargins(5, 5, 0, 20))  # 设置边距
 
-
-
         # 创建折线序列并添加到图表
         series_ax = QLineSeries()
         series_ay = QLineSeries()
@@ -263,51 +310,92 @@ class Ui_Form(object):
         series_az.attachAxis(y_axis)
         return chart, x_axis, y_axis, series_ax, series_ay, series_az
 
-    def update_chart1(self, aX1, aY1, aZ1):
+    def create_chart_ecg(self, title, xSet, ySet, show):
+
+        titleFont = QFont("Arial", 14)  # 设置图表标题的字体和大小
+        labelFontX = QFont("Arial", 8)  # 设置坐标轴标签的字体和大小
+        labelFontY = QFont("Arial", 8)  # 设置坐标轴标签的字体和大小
+        legendFont = QFont("Arial", 8)
+
+        chart = QChart()
+        chart.setTitleFont(titleFont)
+        chart.setTitle(title)
+        chart.legend().setVisible(show)
+        chart.legend().setFont(legendFont)
+        chart.legend().setAlignment(Qt.AlignmentFlag.AlignRight)
+
+        # 创建和添加X轴和Y轴
+        x_axis = QDateTimeAxis()
+        x_axis.setFormat("hh:mm:ss")
+        # x_axis.setTitleText("Time")
+        x_axis.setLabelsFont(labelFontX)  # 应用字体到X轴标签
+        y_axis = QValueAxis()
+        y_axis.setLabelsFont(labelFontY)  # 应用字体到Y轴标签
+        y_axis.setRange(xSet, ySet)
+
+        x_axis.setTickCount(6)
+        y_axis.setTickCount(5)
+        y_axis.setMinorTickCount(2)
+
+        chart.addAxis(x_axis, Qt.AlignmentFlag.AlignBottom)
+        chart.addAxis(y_axis, Qt.AlignmentFlag.AlignLeft)
+        chart.setMargins(QMargins(5, 5, 0, 20))  # 设置边距
+
+        # 创建折线序列并添加到图表
+        series_ax = QLineSeries()
+
+        # 启用抗锯齿以使线条更平滑
+
+        # 设置X轴数据序列的颜色
+        x_color = QColor("#FF4136")  # 例如，设置为红色
+        series_ax.setPen(QPen(x_color, 3))  # 第二个参数是线条宽度
+        series_ax.setName("ECG")
+        chart.addSeries(series_ax)
+
+        # 将序列关联到坐标轴
+        series_ax.attachAxis(x_axis)
+        series_ax.attachAxis(y_axis)
+
+        return chart, x_axis, y_axis, series_ax
+
+    def update_chart1(self, ecg):
         now = QDateTime.currentDateTime()
         now_msecs = now.toMSecsSinceEpoch()
 
         # 更新1数据
-        self.series_ax.append(now_msecs, aX1)
-        self.series_ay.append(now_msecs, aY1)
-        self.series_az.append(now_msecs, aZ1)
+        self.series_ax.append(now_msecs, ecg)
         # 更新X轴范围
-        two_minutes_ago = now.addSecs(-30).toMSecsSinceEpoch()
+        two_minutes_ago = now.addSecs(-3).toMSecsSinceEpoch()
         self.x_axis1.setRange(QDateTime.fromMSecsSinceEpoch(two_minutes_ago), now)
 
         # 限制显示数据点数量
-        max_points = 1000  # 假设最多显示100个数据点
+        max_points = 2000   # 假设最多显示100个数据点
         count = self.series_ax.count()
         # print(count)
         if count > max_points:
             self.series_ax.remove(0)
-            self.series_ay.remove(0)
-            self.series_az.remove(0)
 
         # 动态更新X轴的范围以显示最近2分钟的数据
         self.chartView.update()
 
 # ------
-    def update_chart2(self, GX2, GY2, GZ2, aX2, aY2, aZ2):
+    def update_chart2(self, aX2, aY2, aZ2):
         now = QDateTime.currentDateTime()
         now_msecs = now.toMSecsSinceEpoch()
 
-        # -----
-        self.series_ax.append(now_msecs, GX2)
-        self.series_ay.append(now_msecs, GY2)
-        self.series_az.append(now_msecs, GZ2)
-        # -----
+        # # -----
+        # self.series_ax.append(now_msecs, GX2)
+        # self.series_ay.append(now_msecs, GY2)
+        # self.series_az.append(now_msecs, GZ2)
+        # # -----
 
         # 更新2数据
         self.series_gx.append(now_msecs, aX2)
         self.series_gy.append(now_msecs, aY2)
         self.series_gz.append(now_msecs, aZ2)
 
-
-
         # 更新X轴范围
         two_minutes_ago = now.addSecs(-30).toMSecsSinceEpoch()
-        self.x_axis1.setRange(QDateTime.fromMSecsSinceEpoch(two_minutes_ago), now)
         self.x_axis2.setRange(QDateTime.fromMSecsSinceEpoch(two_minutes_ago), now)
 
         # 限制显示数据点数量
@@ -315,15 +403,10 @@ class Ui_Form(object):
         count = self.series_gx.count()
         # print(count)
         if count > max_points:
-            self.series_ax.remove(0)
-            self.series_ay.remove(0)
-            self.series_az.remove(0)
-
             self.series_gx.remove(0)
             self.series_gy.remove(0)
             self.series_gz.remove(0)
         # 动态更新X轴的范围以显示最近2分钟的数据
-        self.chartView.update()
         self.chartView2.update()
 # ------
     def update_chart3(self, aX3, aY3, aZ3):
@@ -355,10 +438,11 @@ class Ui_Form(object):
 
 # ------
     def connect_btn_clicked(self):
-        # if not self.thread.isRunning():
-        #     self.thread.start()  # 启动线程
-        #     self.connected1 = True
-
+        # ---
+        if not self.ECGthread.isRunning():
+            self.ECGthread.start()  # 启动线程
+            self.connected1 = True
+        # ---
         if not self.thread2.isRunning():
             self.thread2.start()  # 启动线程2
             self.connected2 = True
@@ -370,15 +454,14 @@ class Ui_Form(object):
         self.timer2.start()  # 启动定时器
         self.timer3.start()  # 启动定时器
     def stop_btn_clicked(self):
-        # if self.connected1:
-        #     print("stop1")
-        #     self.timer.stop()  # 启动定时器
-        #     # 停止数据上报
-        #     data = bytes([0x18])
-        #     self.thread.send_data_to_device(data)
-        #     self.thread.initTimeSet = False
-        # else:
-        #     print("设备1未连接，请连接IMU设备...")
+        if self.connected1:
+            print("stop1")
+            self.timer4.stop()  # 启动定时器
+            # 停止数据上报
+            self.ECGthread.stop_hr_stream()
+            self.ECGthread.stop_ecg_stream()
+        else:
+            print("设备1未连接，请连接Polar设备...")
 
         if self.connected2:
             print("stop1")
@@ -401,20 +484,20 @@ class Ui_Form(object):
             print("设备3未连接，请连接IMU设备...")
 
     def start_btn_clicked(self):
-        #
-        # if self.connected1:
-        #     print("start1")
-        #     self.clear_chart_data()
-        #     self.timer.start()  # 启动定时器
-        #     data = bytes([0x19])
-        #     self.thread.send_data_to_device(data)
-        #
-        #     start_time = datetime.now().strftime('%Y%m%d_%H%M%S')
-        #     file_path = os.path.join('IMU_Data2', f'IMU_Data2_{start_time}.csv')
-        #     self.thread.set_file_path(file_path)
-        #     self.thread.initTimeSet = False
-        # else:
-        #     print("设备1未连接，请连接IMU设备...")
+
+        if self.connected1:
+            print("start1")
+            self.clear_chart_data()
+            # self.timer.start()  # 启动定时器
+            data = bytes([0x19])
+            self.ECGthread.send_data_to_device(data)
+
+            start_time = datetime.now().strftime('%Y%m%d_%H%M%S')
+            file_path = os.path.join('IMU_Data2', f'IMU_Data2_{start_time}.csv')
+            self.ECGthread.start_hr_stream()
+            self.ECGthread.start_ecg_stream()
+        else:
+            print("设备未连接，请连接Polar设备...")
 
         if self.connected2:
             print("start1")

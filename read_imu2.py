@@ -135,8 +135,8 @@ class IMUThread(QThread):
             params[10] = (Cmd_ReportTag >> 8) & 0xff
             await self.client.write_gatt_char(par_write_characteristic, params)
             await asyncio.sleep(0.2)
-            await self.client.write_gatt_char(par_write_characteristic, params)
-            # await asyncio.sleep(0.2)
+            # await self.client.write_gatt_char(par_write_characteristic, params)
+            # # await asyncio.sleep(0.2)
 
             notes = bytes([0x19])
             await self.client.write_gatt_char(par_write_characteristic, notes)
