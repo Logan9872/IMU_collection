@@ -18,12 +18,12 @@ This software is designed for the simultaneous collection of IMU data from a run
 ## Example command to start data collection
 python main.py 
 
-**Maintainers**
+## Maintainers
 @Logan9872 luchangda@bsu.edu.cn
 
-**License**
+## License
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-**Acknowledgments**
+## Acknowledgments
 Thanks to the Polar team for providing the heart rate sensor technology.
 Acknowledge any other contributors or resources that were instrumental in the development of this project.
